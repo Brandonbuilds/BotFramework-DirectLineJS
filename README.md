@@ -14,7 +14,7 @@ If you're currently using WebChat, you don't need to make any changes as it incl
 
 ### *What is that funny `subscribe()` method in the samples below?*
 
-Instead of callbacks or Promises, this library handles async operations using the Observable pattern. Try it, you'll like it. For more information, check out [RxJS](https://github.com/reactivex/rxjs/).
+Instead of callbacks or Promises, this library handles async operations using Observables. Try it, you'll like it! For more information, check out [RxJS](https://github.com/reactivex/rxjs/).
 
 ### *Can I use [TypeScript](http://www.typescriptlang.com)?*
 
@@ -30,7 +30,7 @@ That said, the public API is still subject to change.
 
 0. Clone this repo
 1. `npm install`
-2. `npm run build` (or `npm run watch` to rebuild on every change)
+2. `npm run build` (or `npm run watch` to rebuild on every change, or `npm run prepublish` to build production)
 
 ## How to include in your app
 
@@ -40,6 +40,17 @@ There are several ways:
 2. Use the unpkg CDN, e.g. `<script src="http://unpkg.com/botframework-directlinejs/directLine.js"/>`
 3. `npm install botframework-directlinejs`
 
+## Using from within a Node environment
+
+This library uses RxJs/AjaxObserverable which is meant for use in a DOM environment. That doesn't mean you can't also use it from Node though, you just need to do a couple of extra things:
+
+1. `npm install --save xhr2`
+2. Add the following towards the top of your main application file:
+
+```typescript
+global.XMLHttpRequest = require("xhr2");
+```
+    
 ## How to create and use a directLine object
 
 ### Obtain security credentials for your bot:
@@ -51,11 +62,14 @@ There are several ways:
 ### Create a DirectLine object:
 
 ```typescript
+import { DirectLine } from 'botframework-directlinejs';
+
 var directLine = new DirectLine({
     secret: /* put your Direct Line secret here */,
     token: /* or put your Direct Line token here (supply secret OR token, not both) */,
     domain: /* optional: if you are not using the default Direct Line endpoint, e.g. if you are using a region-specific endpoint, put its full URL here */
     webSocket: /* optional: false if you want to use polling GET to receive messages. Defaults to true (use WebSocket). */,
+    pollingInterval: /* optional: set polling interval in milliseconds. Default to 1000 */,
 });
 ```
 
@@ -97,7 +111,7 @@ Direct Line will helpfully send your client a copy of every sent activity, so a 
 
 ```typescript
 directLine.activity$
-.filter(activity => activity.type === 'message' && activity.from.id !== 'yourBotHandle')
+.filter(activity => activity.type === 'message' && activity.from.id === 'yourBotHandle')
 .subscribe(
     message => console.log("received message ", message)
 );
@@ -108,8 +122,11 @@ directLine.activity$
 Subscribing to either `postActivity` or `activity$` will start the process of connecting to the bot. Your app can listen to the connection status and react appropriately :
 
 ```typescript
+
+import { ConnectionStatus } from 'botframework-directlinejs';
+
 directLine.connectionStatus$
-.subscribe(connectionStatus =>
+.subscribe(connectionStatus => {
     switch(connectionStatus) {
         case ConnectionStatus.Uninitialized:    // the status when the DirectLine object is first created/constructed
         case ConnectionStatus.Connecting:       // currently trying to connect to the conversation
@@ -118,7 +135,7 @@ directLine.connectionStatus$
         case ConnectionStatus.FailedToConnect:  // the initial attempt to connect to the conversation failed. No recovery possible.
         case ConnectionStatus.Ended:            // the bot ended the conversation
     }
-);
+});
 ```
 
 ### Reconnect to a conversation
@@ -133,6 +150,55 @@ The resultant Conversation object can then be passed by the app to DirectLine, w
 var conversation = /* a Conversation object obtained from your app's server */;
 directLine.reconnect(conversation);
 ```
+
+### Resume an existing conversation
+
+When using DirectLine with WebChat, closing the current tab or refreshing the page will create a new conversation in most cases. You can resume an existing conversation to keep the user in the same context.
+
+**When using a secret** you can resume a conversation by:
+- Storing the conversationid (in a *permanent* place, like local storage)
+- Giving this value back while creating the DirectLine object along with the secret
+
+```typescript
+import { DirectLine } from 'botframework-directlinejs';
+
+const dl = new DirectLine({
+    secret: /* SECRET */,
+    conversationId: /* the conversationid you stored from previous conversation */
+});
+```
+
+**When using a token** you can resume a conversation by:
+- Storing the conversationid and your token (in a *permanent* place, like local storage)
+- Calling the DirectLine reconnect API yourself to get a refreshed token and a streamurl
+- Creating the DirectLine object using the ConversationId, Token, and StreamUrl
+
+```typescript
+import { DirectLine } from 'botframework-directlinejs';
+
+const dl = new DirectLine({
+    token: /* the token you retrieved while reconnecting */,
+    streamUrl: /* the streamUrl you retrieved while reconnecting */,
+    conversationId: /* the conversationid you stored from previous conversation */
+});
+```
+
+**Getting any history that Direct Line has cached** : you can retrieve history using watermarks:
+You can see the watermark as an *activity 'bookmark'*. The resuming scenario will replay all the conversation activities from the watermark you specify. For now, this only works when using the polling version of DirectLine.
+
+```typescript
+import { DirectLine } from 'botframework-directlinejs';
+
+const dl = new DirectLine({
+    token: /* the token you retrieved while reconnecting */,
+    streamUrl: /* the streamUrl you retrieved while reconnecting */,
+    conversationId: /* the conversationid you stored from previous conversation */,
+    watermark: /* a watermark you saved from a previous conversation */,
+    webSocket: false
+});
+```
+
+*Watermark with websocket will be supported in the future.*
 
 ## Copyright & License
 

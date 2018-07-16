@@ -13,9 +13,9 @@ import 'rxjs/add/operator/delay';
 import 'rxjs/add/operator/do';
 import 'rxjs/add/operator/filter';
 import 'rxjs/add/operator/map';
-import 'rxjs/add/operator/mapTo';
 import 'rxjs/add/operator/mergeMap';
 import 'rxjs/add/operator/retryWhen';
+import 'rxjs/add/operator/share';
 import 'rxjs/add/operator/take';
 
 import 'rxjs/add/observable/dom/ajax';
@@ -23,6 +23,7 @@ import 'rxjs/add/observable/empty';
 import 'rxjs/add/observable/from';
 import 'rxjs/add/observable/interval';
 import 'rxjs/add/observable/of';
+import 'rxjs/add/observable/throw';
 
 // Direct Line 3.0 types
 
@@ -30,22 +31,39 @@ export interface Conversation {
     conversationId: string,
     token: string,
     eTag?: string,
-    streamUrl?: string
+    streamUrl?: string,
+    referenceGrammarId?: string
 }
 
-export type MediaType = "image/png" | "image/jpg" | "image/jpeg" | "image/gif" | "audio/mpeg" | "audio/mp4" | "video/mp4";
+export type MediaType = "image/png" | "image/jpg" | "image/jpeg" | "image/gif" | "image/svg+xml" | "audio/mpeg" | "audio/mp4" | "video/mp4";
 
 export interface Media {
     contentType: MediaType,
     contentUrl: string,
-    name?: string
+    name?: string,
+    thumbnailUrl?: string
 }
 
-export interface Button {
-    type: "openUrl" | "imBack" | "postBack" | "playAudio" | "playVideo" | "showImage" | "downloadFile" | "signin" | "call",
+export interface UnknownMedia{
+    contentType: string,
+    contentUrl: string,
+    name?: string,
+    thumbnailUrl?: string    
+}
+
+export type CardActionTypes = "openUrl" | "imBack" | "postBack" | "playAudio" | "playVideo" | "showImage" | "downloadFile" | "signin" | "call";
+
+export interface CardAction {
+    type: CardActionTypes,
     title: string,
-    value: string,
+    value: any,
     image?: string
+}
+
+export interface CardImage {
+    alt?: string,
+    url: string,
+    tap?: CardAction
 }
 
 export interface HeroCard {
@@ -54,9 +72,9 @@ export interface HeroCard {
         title?: string,
         subtitle?: string,
         text?: string,
-        images?: { url: string }[],
-        buttons?: Button[],
-        tap?: string
+        images?: CardImage[],
+        buttons?: CardAction[],
+        tap?: CardAction
     }
 }
 
@@ -66,9 +84,9 @@ export interface Thumbnail {
         title?: string,
         subtitle?: string,
         text?: string,
-        images?: { url: string }[],
-        buttons?: Button[],
-        tap?: string
+        images?: CardImage[],
+        buttons?: CardAction[],
+        tap?: CardAction
     }
 }
 
@@ -76,7 +94,16 @@ export interface Signin {
     contentType: "application/vnd.microsoft.card.signin",
     content: {
         text?: string,
-        buttons?: Button[]
+        buttons?: CardAction[]
+    }
+}
+
+export interface OAuth {
+    contentType: "application/vnd.microsoft.card.oauth",
+    content: {
+        text?: string,
+        connectionname: string,
+        buttons?: CardAction[]
     }
 }
 
@@ -84,10 +111,10 @@ export interface ReceiptItem {
     title?: string,
     subtitle?: string,
     text?: string,
-    image?: { url: string },
+    image?: CardImage,
     price?: string,
     quantity?: string,
-    tap?: string
+    tap?: CardAction
 }
 
 export interface Receipt {
@@ -96,11 +123,11 @@ export interface Receipt {
         title?: string,
         facts?: { key: string, value: string }[],
         items?: ReceiptItem[],
-        tap?: string,
+        tap?: CardAction,
         tax?: string,
-        VAT?: string,
+        vat?: string,
         total?: string,
-        buttons?: Button[]
+        buttons?: CardAction[]
     }
 }
 
@@ -111,8 +138,8 @@ export interface FlexCard {
         title?: string,
         subtitle?: string,
         text?: string,
-        images?: { url: string, tap?: Button }[],
-        buttons?: Button[],
+        images?: CardImage[],
+        buttons?: CardAction[],
         aspect?: string
     }
 }
@@ -124,7 +151,7 @@ export interface AudioCard {
         subtitle?: string,
         text?: string,
         media?: { url: string, profile?: string }[],
-        buttons?: Button[],
+        buttons?: CardAction[],
         autoloop?: boolean,
         autostart?: boolean
     }
@@ -137,11 +164,16 @@ export interface VideoCard {
         subtitle?: string,
         text?: string,
         media?: { url: string, profile?: string }[],
-        buttons?: Button[],
+        buttons?: CardAction[],
         image?: { url: string, alt?: string },
         autoloop?: boolean,
         autostart?: boolean
     }
+}
+
+export interface AdaptiveCard {
+    contentType: "application/vnd.microsoft.card.adaptive",
+    content: any;
 }
 
 export interface AnimationCard {
@@ -151,14 +183,15 @@ export interface AnimationCard {
         subtitle?: string,
         text?: string,
         media?: { url: string, profile?: string }[],
-        buttons?: Button[],
+        buttons?: CardAction[],
         image?: { url: string, alt?: string },
         autoloop?: boolean,
         autostart?: boolean
     }
 }
 
-export type Attachment = Media | HeroCard | Thumbnail | Signin | Receipt | AudioCard | VideoCard | AnimationCard | FlexCard;
+export type KnownMedia = Media | HeroCard | Thumbnail | Signin | OAuth | Receipt | AudioCard | VideoCard | AnimationCard | FlexCard | AdaptiveCard;
+export type Attachment = KnownMedia | UnknownMedia;
 
 export interface User {
     id: string,
@@ -186,7 +219,11 @@ export interface Message extends IActivity {
     textFormat?: "plain" | "markdown" | "xml",
     attachmentLayout?: AttachmentLayout,
     attachments?: Attachment[],
-    entities?: any[]
+    entities?: any[],
+    suggestedActions?: { actions: CardAction[], to?: string[] },
+    speak?: string,
+    inputHint?: string,
+    value?: object
 }
 
 export interface Typing extends IActivity {
@@ -219,9 +256,13 @@ export enum ConnectionStatus {
 
 export interface DirectLineOptions {
     secret?: string,
-    token?: string
+    token?: string,
+    conversationId?: string,
+    watermark?: string,
     domain?: string,
-    webSocket?: boolean
+    webSocket?: boolean,
+    pollingInterval?: number,
+    streamUrl?: string
 }
 
 const lifetimeRefreshToken = 30 * 60 * 1000;
@@ -243,9 +284,10 @@ const konsole = {
 export interface IBotConnection {
     connectionStatus$: BehaviorSubject<ConnectionStatus>,
     activity$: Observable<Activity>,
-    reconnect(conversation: Conversation): void,
     end(): void,
-    postActivity(activity: Activity): Observable<string>
+    referenceGrammarId?: string,
+    postActivity(activity: Activity): Observable<string>,
+    getSessionId? : () => Observable<string>
 }
 
 export class DirectLine implements IBotConnection {
@@ -253,27 +295,48 @@ export class DirectLine implements IBotConnection {
     public activity$: Observable<Activity>;
 
     private domain = "https://directline.botframework.com/v3/directline";
-    private webSocket = true;
+    private webSocket;
 
     private conversationId: string;
     private secret: string;
     private token: string;
     private watermark = '';
     private streamUrl: string;
+    public referenceGrammarId: string;
+
+    private pollingInterval: number = 1000;
 
     private tokenRefreshSubscription: Subscription;
 
     constructor(options: DirectLineOptions) {
         this.secret = options.secret;
         this.token = options.secret || options.token;
+        this.webSocket = (options.webSocket === undefined ? true : options.webSocket) && typeof WebSocket !== 'undefined' && WebSocket !== undefined; 
+
         if (options.domain)
             this.domain = options.domain;
-        if (options.webSocket !== undefined)
-            this.webSocket = options.webSocket;
+        if (options.conversationId) {
+            this.conversationId = options.conversationId;
+        }
+        if (options.watermark) {
+            if (this.webSocket) 
+                console.warn("Watermark was ignored: it is not supported using websockets at the moment");
+            else
+                this.watermark =  options.watermark;
+        }
+        if (options.streamUrl) {
+            if (options.token && options.conversationId) 
+                this.streamUrl = options.streamUrl;
+            else
+                console.warn("streamUrl was ignored: you need to provide a token and a conversationid");
+        }
+        if (options.pollingInterval !== undefined)
+            this.pollingInterval = options.pollingInterval;
 
-        this.activity$ = this.webSocket && WebSocket !== undefined
+        this.activity$ = (this.webSocket
             ? this.webSocketActivity$()
-            : this.pollingGetActivity$();
+            : this.pollingGetActivity$()
+        ).share();
     }
 
     // Every time we're about to make a Direct Line REST call, we call this first to see check the current connection status.
@@ -284,21 +347,28 @@ export class DirectLine implements IBotConnection {
             if (connectionStatus === ConnectionStatus.Uninitialized) {
                 this.connectionStatus$.next(ConnectionStatus.Connecting);
 
-                return this.startConversation()
-                .do(conversation => {
-                    this.conversationId = conversation.conversationId;
-                    this.token = this.secret || conversation.token;
-                    this.streamUrl = conversation.streamUrl;
-                    if (!this.secret)
-                        this.refreshTokenLoop();
-
+                //if token and streamUrl are defined it means reconnect has already been done. Skipping it.
+                if (this.token && this.streamUrl) {
                     this.connectionStatus$.next(ConnectionStatus.Online);
-                }, error => {
-                    this.connectionStatus$.next(ConnectionStatus.FailedToConnect);
-                })
-                .mapTo(connectionStatus);
-            } else {
-                return Observable.of(connectionStatus);
+                    return Observable.of(connectionStatus);
+                } else {
+                    return this.startConversation().do(conversation => {
+                        this.conversationId = conversation.conversationId;
+                        this.token = this.secret || conversation.token;
+                        this.streamUrl = conversation.streamUrl;
+                        this.referenceGrammarId = conversation.referenceGrammarId;
+                        if (!this.secret)
+                            this.refreshTokenLoop();
+
+                        this.connectionStatus$.next(ConnectionStatus.Online);
+                    }, error => {
+                        this.connectionStatus$.next(ConnectionStatus.FailedToConnect);
+                    })
+                    .map(_ => connectionStatus);
+                }
+            }
+            else {
+                return Observable.of(connectionStatus);            
             }
         })
         .filter(connectionStatus => connectionStatus != ConnectionStatus.Uninitialized && connectionStatus != ConnectionStatus.Connecting)
@@ -321,10 +391,22 @@ export class DirectLine implements IBotConnection {
         return once ? obs.take(1) : obs;
     }
 
+    private expiredToken() {
+        const connectionStatus = this.connectionStatus$.getValue();
+        if (connectionStatus != ConnectionStatus.Ended && connectionStatus != ConnectionStatus.FailedToConnect)
+            this.connectionStatus$.next(ConnectionStatus.ExpiredToken);
+    }
+
     private startConversation() {
+        //if conversationid is set here, it means we need to call the reconnect api, else it is a new conversation
+        const url = this.conversationId 
+            ? `${this.domain}/conversations/${this.conversationId}?watermark=${this.watermark}` 
+            : `${this.domain}/conversations`;
+        const method = this.conversationId ? "GET" : "POST";
+
         return Observable.ajax({
-            method: "POST",
-            url: `${this.domain}/conversations`,
+            method,
+            url,
             timeout,
             headers: {
                 "Accept": "application/json",
@@ -370,7 +452,7 @@ export class DirectLine implements IBotConnection {
                 .mergeMap(error => {
                     if (error.status === 403) {
                         // if the token is expired there's no reason to keep trying
-                        this.connectionStatus$.next(ConnectionStatus.ExpiredToken);
+                        this.expiredToken();
                         return Observable.throw(error);
                     }
                     return Observable.of(error);
@@ -392,6 +474,31 @@ export class DirectLine implements IBotConnection {
         if (this.tokenRefreshSubscription)
             this.tokenRefreshSubscription.unsubscribe();
         this.connectionStatus$.next(ConnectionStatus.Ended);
+    }
+    
+    getSessionId(): Observable<string> {
+        // If we're not connected to the bot, get connected
+        // Will throw an error if we are not connected
+        konsole.log("getSessionId");
+        return this.checkConnection(true)
+            .flatMap(_ =>
+                Observable.ajax({
+                    method: "GET",
+                    url: `${this.domain}/session/getsessionid`, 
+                    withCredentials: true,
+                    timeout,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${this.token}`
+                    }
+                })
+                .map(ajaxResponse => {
+                    konsole.log("getSessionId response: " + ajaxResponse.response.sessionId);
+                    return ajaxResponse.response.sessionId as string;
+                })
+                .catch(error => this.catchPostError(error))
+            )
+            .catch(error => this.catchExpiredToken(error));
     }
 
     postActivity(activity: Activity) {
@@ -422,9 +529,8 @@ export class DirectLine implements IBotConnection {
         .catch(error => this.catchExpiredToken(error));
     }
 
-    private postMessageWithAttachments(message: Message) {
+    private postMessageWithAttachments({ attachments, ... messageWithoutAttachments }: Message) {
         let formData: FormData;
-        const { attachments, ... newMessage } = message;
 
         // If we're not connected to the bot, get connected
         // Will throw an error if we are not connected
@@ -433,7 +539,7 @@ export class DirectLine implements IBotConnection {
             // To send this message to DirectLine we need to deconstruct it into a "template" activity
             // and one blob for each attachment.
             formData = new FormData();
-            formData.append('activity', new Blob([JSON.stringify(newMessage)], { type: 'application/vnd.microsoft.activity' }));
+            formData.append('activity', new Blob([JSON.stringify(messageWithoutAttachments)], { type: 'application/vnd.microsoft.activity' }));
 
             return Observable.from(attachments || [])
             .flatMap((media: Media) =>
@@ -451,7 +557,7 @@ export class DirectLine implements IBotConnection {
         .flatMap(_ =>
             Observable.ajax({
                 method: "POST",
-                url: `${this.domain}/conversations/${this.conversationId}/upload?userId=${message.from.id}`,
+                url: `${this.domain}/conversations/${this.conversationId}/upload?userId=${messageWithoutAttachments.from.id}`,
                 body: formData,
                 timeout,
                 headers: {
@@ -467,7 +573,7 @@ export class DirectLine implements IBotConnection {
     private catchPostError(error: any) {
         if (error.status === 403)
             // token has expired (will fall through to return "retry")
-            this.connectionStatus$.next(ConnectionStatus.ExpiredToken);
+            this.expiredToken();
         else if (error.status >= 400 && error.status < 500)
             // more unrecoverable errors
             return Observable.throw(error);
@@ -481,7 +587,7 @@ export class DirectLine implements IBotConnection {
     }
 
     private pollingGetActivity$() {
-        return Observable.interval(1000)
+        return Observable.interval(this.pollingInterval)
         .combineLatest(this.checkConnection())
         .flatMap(_ =>
             Observable.ajax({
@@ -500,7 +606,7 @@ export class DirectLine implements IBotConnection {
                     // to immediately throw an error, which is caught by the catch() below and transformed into an empty
                     // object. Then next() returns, and we emit an empty object. Which means one 403 is causing
                     // two empty objects to be emitted. Which is harmless but, again, slightly ugly.
-                    this.connectionStatus$.next(ConnectionStatus.ExpiredToken);
+                    this.expiredToken();
                 }
                 return Observable.empty<AjaxResponse>();
             })
@@ -544,7 +650,7 @@ export class DirectLine implements IBotConnection {
                 // If we periodically ping the server with empty messages, it helps Chrome
                 // realize when connection breaks, and close the socket. We then throw an
                 // error, and that give us the opportunity to attempt to reconnect.
-                sub = Observable.interval(timeout).subscribe(_ => ws.send(null));
+                sub = Observable.interval(timeout).subscribe(_ => ws.send(""));
             }
 
             ws.onclose = close => {
@@ -578,16 +684,17 @@ export class DirectLine implements IBotConnection {
                 }
             })
             .do(result => {
-                this.token = result.response.token;
+                if (!this.secret)
+                    this.token = result.response.token;
                 this.streamUrl = result.response.streamUrl;
             })
-            .mapTo(null)
+            .map(_ => null)
             .retryWhen(error$ => error$
                 .mergeMap(error => {
                     if (error.status === 403) {
                         // token has expired. We can't recover from this here, but the embedding
                         // website might eventually call reconnect() with a new token and streamUrl.
-                        this.connectionStatus$.next(ConnectionStatus.ExpiredToken);
+                        this.expiredToken();
                     }
                     return Observable.of(error);
                 })
